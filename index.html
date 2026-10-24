@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>am — activate</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <button class="theme-toggle" id="theme-toggle" aria-label="ganti tema" title="ganti tema">🌙</button>
+
+  <header>
+    <h1>am <span>unlock</span> Premium</h1>
+    <p class="by">by <span class="author">Ningen</span></p>
+    <p>alight motion premium — magic link activation</p>
+  </header>
+
+  <!-- Step indicator: cuma nampilin step aktif + progress bar -->
+  <div class="steps">
+    <div class="step-single pop" id="step-label">01 · email</div>
+    <div class="step-bar">
+      <div class="step-bar-fill" id="step-fill"></div>
+    </div>
+  </div>
+
+  <div class="panel stats">
+    <div>
+      <div class="stat-label">TOTAL AKTIVASI</div>
+      <div class="stat-val acc" id="st-total">-</div>
+    </div>
+    <div style="text-align:right">
+      <div class="stat-label">HARI INI</div>
+      <div class="stat-val" id="st-today">-</div>
+    </div>
+  </div>
+
+  <div class="panel" id="p1">
+    <h2>masukkan email</h2>
+    <p class="hint">link login dikirim ke email, tanpa password.</p>
+    <label>email</label>
+    <input id="em" type="email" placeholder="nama@email.com">
+    <button id="b1">kirim link →</button>
+    <div id="m1" class="msg"></div>
+  </div>
+
+  <div class="panel hide" id="p2">
+    <h2>tempel link</h2>
+    <p class="hint">link terkirim ke <span id="w-em" class="emph">-</span>. copy link dari email, paste di sini.</p>
+    <label>link verifikasi</label>
+    <input id="lk" type="text" placeholder="https://... atau oobCode">
+    <button id="b2" class="sec">← kembali</button>
+    <button id="b3">verifikasi →</button>
+    <div id="m2" class="msg"></div>
+  </div>
+
+  <div class="panel hide" id="p3">
+    <h2 class="ok-title">premium aktif ✨</h2>
+    <p class="hint">detail akun di bawah, token bisa dicopy.</p>
+    <div class="kv"><b>email</b><span id="r-em">-</span></div>
+    <div class="kv"><b>uid</b><span id="r-uid">-</span></div>
+    <div class="kv"><b>order</b><span id="r-ord">-</span></div>
+    <div style="margin-top:14px">
+      <label>id token</label>
+      <div class="tok" id="r-tok">-</div>
+      <button class="tiny sec" id="b4">copy token</button>
+      <button class="tiny sec" id="b5">aktivasi lain</button>
+    </div>
+  </div>
+
+  <footer>unofficial · reverse engineered · use at your own risk</footer>
+
+</div>
+
+<script>
+const $ = i => document.getElementById(i)
+
+/* ---------- Theme toggle ---------- */
+const tt = $('theme-toggle')
+const root = document.documentElement
+const saved = localStorage.getItem('theme')
+if (saved === 'dark') {
+  root.setAttribute('data-theme', 'dark')
+  tt.textContent = '☀️'
+}
+tt.onclick = () => {
+  const isDark = root.getAttribute('data-theme') === 'dark'
+  if (isDark) {
+    root.removeAttribute('data-theme')
+    tt.textContent = '🌙'
+    localStorage.setItem('theme', 'light')
+  } else {
+    root.setAttribute('data-theme', 'dark')
+    tt.textContent = '☀️'
+    localStorage.setItem('theme', 'dark')
+  }
+}
+
+/* ---------- Stats ---------- */
+fetch('/api/stats').then(r => r.json()).then(j => {
+  $('st-total').textContent = Number(j.total || 0).toLocaleString('id-ID')
+  $('st-today').textContent = Number(j.today || 0).toLocaleString('id-ID')
+}).catch(() => {})
+
+/* ---------- Step flow (single active view) ---------- */
+const stepLabels = {
+  1: '01 · email',
+  2: '02 · link',
+  3: '03 · done ✨'
+}
+
+const step = n => {
+  // tampil/sembunyi panel
+  for (let i = 1; i <= 3; i++) {
+    $('p' + i).classList.toggle('hide', i !== n)
+  }
+
+  // update label
+  const lbl = $('step-label')
+  lbl.textContent = stepLabels[n]
+  lbl.classList.remove('pop')
+  void lbl.offsetWidth          // trigger reflow biar animasi restart
+  lbl.classList.add('pop')
+
+  // update progress bar
+  const fill = $('step-fill')
+  fill.style.width = (n / 3 * 100) + '%'
+  fill.classList.toggle('done', n === 3)
+}
+
+const say = (id, txt, ok) => {
+  const m = $(id)
+  m.textContent = txt
+  m.className = 'msg ' + (ok ? 'ok' : 'err')
+}
+const busy = (b, on, t) => { b.disabled = on; if (t) b.textContent = t }
+
+$('b1').onclick = async () => {
+  const em = $('em').value.trim()
+  if (!em.includes('@')) return say('m1', 'email gak valid', 0)
+  const b = $('b1'); busy(b, true, 'mengirim...')
+  try {
+    const r = await fetch('/api/send-link', {
+      method: 'POST',
+      headers: {'content-type':'application/json'},
+      body: JSON.stringify({ email: em })
+    })
+    const j = await r.json()
+    if (j.success) {
+      say('m1', 'link terkirim, cek email', 1)
+      $('w-em').textContent = em
+      setTimeout(() => step(2), 700)
+    } else say('m1', j.message || 'gagal', 0)
+  } catch { say('m1', 'server gak nyambung', 0) }
+  busy(b, false); b.textContent = 'kirim link →'
+}
+
+$('b2').onclick = () => step(1)
+
+$('b3').onclick = async () => {
+  const raw = $('lk').value.trim()
+  if (!raw) return say('m2', 'link kosong', 0)
+  const b = $('b3'); busy(b, true, 'verifikasi...')
+  try {
+    const r = await fetch('/api/verify-link', {
+      method: 'POST',
+      headers: {'content-type':'application/json'},
+      body: JSON.stringify({
+        email: $('w-em').textContent,
+        magicLink: raw
+      })
+    })
+    const j = await r.json()
+    if (j.success) {
+      const d = j.data
+      $('r-em').textContent = d.email
+      $('r-uid').textContent = d.uid
+      $('r-ord').textContent = d.orderId || '-'
+      $('r-tok').textContent = d.idToken
+      window.__tok = d.idToken
+      step(3)
+    } else say('m2', j.message || 'gagal', 0)
+  } catch { say('m2', 'server gak nyambung', 0) }
+  busy(b, false); b.textContent = 'verifikasi →'
+}
+
+$('b4').onclick = () => {
+  navigator.clipboard.writeText(window.__tok || '')
+  $('b4').textContent = 'copied ✓'
+  setTimeout(() => $('b4').textContent = 'copy token', 1800)
+}
+$('b5').onclick = () => { $('lk').value = ''; step(1) }
+</script>
+</body>
+</html>
